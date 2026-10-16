@@ -23,6 +23,9 @@
     .hole { background:radial-gradient(ellipse at center,#090d10,#050708 72%); box-shadow:inset 0 5px 14px #000,0 0 0 1px #3a3022 }
     .status { min-height:28px; margin:8px 0 12px; color:#d5c8aa; font:13px system-ui,sans-serif }
     .status strong { color:#f3d28c }
+    .sizes { display:flex; justify-content:center; align-items:center; gap:7px; margin:0 0 12px; color:#a7a49d; font:11px system-ui,sans-serif; letter-spacing:.1em; text-transform:uppercase }
+    .size { appearance:none; border:1px solid #5e574a; border-radius:3px; padding:5px 9px; background:#191b1b; color:#c7c1b4; font:600 11px system-ui,sans-serif; cursor:pointer }
+    .size.active { border-color:#e0bc72; color:#ffe6aa; background:#5e482b }
     .controls { display:flex; justify-content:center; gap:11px; flex-wrap:wrap }
     .button { appearance:none; border:1px solid #8b7142; color:#f4e8cc; background:linear-gradient(#31302a,#191b1b); padding:10px 20px; min-width:128px; border-radius:4px; font:600 12px system-ui,sans-serif; letter-spacing:.09em; text-transform:uppercase; cursor:pointer; box-shadow:0 4px 10px #0006 }
     .button:hover { background:linear-gradient(#494333,#252522); border-color:#e0bc72 }
@@ -41,6 +44,7 @@
       <div class="grid" id="grid" role="group" aria-label="Five by five sliding puzzle"></div>
     </div>
     <div class="status" id="status" aria-live="polite"></div>
+    <div class="sizes" aria-label="Puzzle size"><span>Board</span><button class="size active" data-size="5">5 × 5</button><button class="size" data-size="4">4 × 4</button></div>
     <div class="controls">
       <button class="button primary" id="hint">Hint</button>
       <button class="button" id="reset">Reset puzzle</button>
@@ -49,26 +53,29 @@
   </main>
   <script>
     (() => {
-      const SIZE=5, COUNT=25, SOLVED=Array.from({length:COUNT},(_,i)=>i===COUNT-1?-1:i);
+      let size=5, count=25, solved=Array.from({length:count},(_,i)=>i===count-1?-1:i);
       const grid=document.querySelector('#grid'), status=document.querySelector('#status');
       let board=[], initial=[], initialSolution=[], remainingSolution=[], moves=0, hinted=-1;
-      const neighbors=(i)=>[i-5,i+5,...(i%5?[i-1]:[]),...(i%5<4?[i+1]:[])].filter(n=>n>=0&&n<COUNT&&Math.abs((n%5)-(i%5))+Math.abs(Math.floor(n/5)-Math.floor(i/5))===1);
+      const neighbors=(i)=>[i-size,i+size,...(i%size?[i-1]:[]),...(i%size<size-1?[i+1]:[])].filter(n=>n>=0&&n<count&&Math.abs((n%size)-(i%size))+Math.abs(Math.floor(n/size)-Math.floor(i/size))===1);
       function render(){
         grid.replaceChildren();
+        grid.style.gridTemplate=`repeat(${size},1fr) / repeat(${size},1fr)`;
+        grid.setAttribute('aria-label',`${size} by ${size} sliding puzzle`);
         board.forEach((piece,pos)=>{
           const el=document.createElement(piece<0?'div':'button');
           if(piece<0){el.className='hole';el.setAttribute('aria-label','Empty space')}
-          else {el.className=`tile${pos===hinted?' hinted':''}`;el.type='button';el.style.backgroundImage=`url('tile-${piece}.png')`;el.setAttribute('aria-label',`Stone ${piece+1}${pos===hinted?' — suggested move':''}`);el.title='Slide this stone';el.addEventListener('click',()=>move(pos));}
+          else {el.className=`tile${pos===hinted?' hinted':''}`;el.type='button';el.style.backgroundImage=`url('${size===4?'tile4':'tile'}-${piece}.png')`;el.setAttribute('aria-label',`Stone ${piece+1}${pos===hinted?' — suggested move':''}`);el.title='Slide this stone';el.addEventListener('click',()=>move(pos));}
           grid.append(el);
         });
-        const solved=board.every((v,i)=>v===SOLVED[i]);
-        status.innerHTML=solved?'<strong>Constellation restored.</strong> The path is whole again.':`${moves} ${moves===1?'move':'moves'} made`;
+        const isSolved=board.every((v,i)=>v===solved[i]);
+        status.innerHTML=isSolved?'<strong>Constellation restored.</strong> The path is whole again.':`${moves} ${moves===1?'move':'moves'} made`;
       }
       function move(pos){const hole=board.indexOf(-1);if(!neighbors(hole).includes(pos))return;if(pos===remainingSolution[0]) remainingSolution.shift(); else remainingSolution=[hole,...remainingSolution];[board[pos],board[hole]]=[board[hole],board[pos]];moves++;hinted=-1;render()}
       function hint(){if(!remainingSolution.length){status.innerHTML='<strong>Constellation restored.</strong> The path is whole again.';return}hinted=remainingSolution[0];status.innerHTML='Move the <strong>glowing gold stone</strong> into the empty space.';render();}
-      function newGame(){board=SOLVED.slice();let hole=COUNT-1,prev=-1;const undo=[];for(let n=0;n<120;n++){const options=neighbors(hole).filter(p=>p!==prev);const next=options[Math.floor(Math.random()*options.length)];undo.push(hole);board[hole]=board[next];board[next]=-1;prev=hole;hole=next;}initial=board.slice();initialSolution=undo.reverse();remainingSolution=initialSolution.slice();moves=0;hinted=-1;render()}
+      function newGame(){board=solved.slice();let hole=count-1,prev=-1;const undo=[];for(let n=0;n<count*5;n++){const options=neighbors(hole).filter(p=>p!==prev);const next=options[Math.floor(Math.random()*options.length)];undo.push(hole);[board[hole],board[next]]=[board[next],board[hole]];prev=hole;hole=next;}initial=board.slice();initialSolution=undo.reverse();remainingSolution=initialSolution.slice();moves=0;hinted=-1;render()}
       document.querySelector('#hint').addEventListener('click',hint);
       document.querySelector('#reset').addEventListener('click',()=>{board=initial.slice();remainingSolution=initialSolution.slice();moves=0;hinted=-1;render()});
+      document.querySelectorAll('.size').forEach(button=>button.addEventListener('click',()=>{size=Number(button.dataset.size);count=size*size;solved=Array.from({length:count},(_,i)=>i===count-1?-1:i);document.querySelectorAll('.size').forEach(b=>b.classList.toggle('active',b===button));newGame()}));
       newGame();
     })();
   </script>
