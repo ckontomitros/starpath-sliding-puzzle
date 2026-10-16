@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The Starpath — Sliding Puzzle</title>
+  <style>
+    :root { color-scheme: dark; --gold:#e5bd70; --ink:#0c1014; --muted:#a7a49d; }
+    * { box-sizing:border-box }
+    body { margin:0; min-height:100vh; color:#f5efe2; background:radial-gradient(ellipse at 50% 38%,#253039 0,#11171c 46%,#090c0f 100%); font:15px/1.45 Georgia,serif; display:grid; place-items:center; padding:28px 18px 40px }
+    .app { width:min(100%,790px); text-align:center }
+    .eyebrow { color:var(--gold); font:600 11px/1.3 system-ui,sans-serif; letter-spacing:.28em; text-transform:uppercase }
+    h1 { margin:8px 0 5px; font-size:clamp(29px,5vw,46px); font-weight:500; letter-spacing:.035em; text-shadow:0 3px 22px #000 }
+    .intro { color:#c7c1b4; margin:0 0 20px; font-size:15px }
+    .frame { width:min(100%,680px); margin:auto; position:relative; aspect-ratio:1274/1235; background:url('board-art.png') center/100% 100% no-repeat; filter:drop-shadow(0 16px 25px #0009) }
+    .grid { position:absolute; left:17.42%; top:12.79%; width:65.47%; height:69.31%; display:grid; grid-template:repeat(5,1fr)/repeat(5,1fr); gap:4px; padding:2px; background:#111719; border:2px solid #8b7654; border-radius:5px; box-shadow:inset 0 0 18px #000,0 0 0 3px #241d15; overflow:hidden }
+    .tile,.hole { min-width:0; min-height:0; border-radius:7px; position:relative }
+    .tile { border:1px solid #827b6e; box-shadow:inset 0 1px 3px #fff3,inset 0 -5px 8px #0008,0 2px 3px #000b; background-size:100% 100%; cursor:pointer; transition:transform .13s,filter .15s,box-shadow .15s; }
+    .tile:hover { filter:brightness(1.15); transform:scale(1.018); z-index:1; box-shadow:inset 0 1px 3px #fff5,0 0 0 2px #e4bd70,0 4px 9px #000b }
+    .tile.hinted { z-index:2; border-color:#ffe1a0; filter:brightness(1.28) saturate(1.14); animation:hintPulse 1s ease-in-out infinite alternate; box-shadow:inset 0 1px 4px #fff8,0 0 0 3px #f2c86f,0 0 19px 7px #e7ad3cbb,0 4px 10px #000c }
+    @keyframes hintPulse { from { transform:scale(1); } to { transform:scale(1.065); } }
+    .tile:focus-visible,.button:focus-visible { outline:2px solid #ffe19b; outline-offset:3px }
+    .hole { background:radial-gradient(ellipse at center,#090d10,#050708 72%); box-shadow:inset 0 5px 14px #000,0 0 0 1px #3a3022 }
+    .status { min-height:28px; margin:8px 0 12px; color:#d5c8aa; font:13px system-ui,sans-serif }
+    .status strong { color:#f3d28c }
+    .controls { display:flex; justify-content:center; gap:11px; flex-wrap:wrap }
+    .button { appearance:none; border:1px solid #8b7142; color:#f4e8cc; background:linear-gradient(#31302a,#191b1b); padding:10px 20px; min-width:128px; border-radius:4px; font:600 12px system-ui,sans-serif; letter-spacing:.09em; text-transform:uppercase; cursor:pointer; box-shadow:0 4px 10px #0006 }
+    .button:hover { background:linear-gradient(#494333,#252522); border-color:#e0bc72 }
+    .button.primary { background:linear-gradient(#947645,#5e482b); color:#fff3d8; border-color:#d5b36d }
+    .help { color:#8f938f; font:12px system-ui,sans-serif; margin:13px 0 0 }
+    @media(max-width:520px) { body{padding:22px 8px} .grid{gap:2px;padding:1px} .tile,.hole{border-radius:4px} .button{min-width:115px;padding:9px 14px} }
+    @media(prefers-reduced-motion:reduce) { *,*::before,*::after{transition:none!important} }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <div class="eyebrow">A relic from the buried temple</div>
+    <h1>The Starpath</h1>
+    <p class="intro">Slide the stones to restore the constellation.</p>
+    <div class="frame" aria-label="The ornate puzzle board">
+      <div class="grid" id="grid" role="group" aria-label="Five by five sliding puzzle"></div>
+    </div>
+    <div class="status" id="status" aria-live="polite"></div>
+    <div class="controls">
+      <button class="button primary" id="hint">Hint</button>
+      <button class="button" id="reset">Reset puzzle</button>
+    </div>
+    <p class="help">Click a stone beside the empty space to slide it. The border stays fixed.</p>
+  </main>
+  <script>
+    (() => {
+      const SIZE=5, COUNT=25, SOLVED=Array.from({length:COUNT},(_,i)=>i===COUNT-1?-1:i);
+      const grid=document.querySelector('#grid'), status=document.querySelector('#status');
+      let board=[], initial=[], initialSolution=[], remainingSolution=[], moves=0, hinted=-1;
+      const neighbors=(i)=>[i-5,i+5,...(i%5?[i-1]:[]),...(i%5<4?[i+1]:[])].filter(n=>n>=0&&n<COUNT&&Math.abs((n%5)-(i%5))+Math.abs(Math.floor(n/5)-Math.floor(i/5))===1);
+      function render(){
+        grid.replaceChildren();
+        board.forEach((piece,pos)=>{
+          const el=document.createElement(piece<0?'div':'button');
+          if(piece<0){el.className='hole';el.setAttribute('aria-label','Empty space')}
+          else {el.className=`tile${pos===hinted?' hinted':''}`;el.type='button';el.style.backgroundImage=`url('tile-${piece}.png')`;el.setAttribute('aria-label',`Stone ${piece+1}${pos===hinted?' — suggested move':''}`);el.title='Slide this stone';el.addEventListener('click',()=>move(pos));}
+          grid.append(el);
+        });
+        const solved=board.every((v,i)=>v===SOLVED[i]);
+        status.innerHTML=solved?'<strong>Constellation restored.</strong> The path is whole again.':`${moves} ${moves===1?'move':'moves'} made`;
+      }
+      function move(pos){const hole=board.indexOf(-1);if(!neighbors(hole).includes(pos))return;if(pos===remainingSolution[0]) remainingSolution.shift(); else remainingSolution=[hole,...remainingSolution];[board[pos],board[hole]]=[board[hole],board[pos]];moves++;hinted=-1;render()}
+      function hint(){if(!remainingSolution.length){status.innerHTML='<strong>Constellation restored.</strong> The path is whole again.';return}hinted=remainingSolution[0];status.innerHTML='Move the <strong>glowing gold stone</strong> into the empty space.';render();}
+      function newGame(){board=SOLVED.slice();let hole=COUNT-1,prev=-1;const undo=[];for(let n=0;n<120;n++){const options=neighbors(hole).filter(p=>p!==prev);const next=options[Math.floor(Math.random()*options.length)];undo.push(hole);board[hole]=board[next];board[next]=-1;prev=hole;hole=next;}initial=board.slice();initialSolution=undo.reverse();remainingSolution=initialSolution.slice();moves=0;hinted=-1;render()}
+      document.querySelector('#hint').addEventListener('click',hint);
+      document.querySelector('#reset').addEventListener('click',()=>{board=initial.slice();remainingSolution=initialSolution.slice();moves=0;hinted=-1;render()});
+      newGame();
+    })();
+  </script>
+</body>
+</html>
